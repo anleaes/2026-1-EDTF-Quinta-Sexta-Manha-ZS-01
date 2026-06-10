@@ -1,7 +1,57 @@
 import { motion } from "motion/react";
 import { Package, TrendingUp, BarChart3, Bell, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
+import ProductDemo from "./components/ProductDemo";
+import LoginSignup from "./components/LoginSignup";
+import ForgotPassword from "./components/ForgotPassword";
+import GoogleAuth from "./components/GoogleAuth";
+import Dashboard from "./components/Dashboard";
 
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<"home" | "demo" | "login" | "forgot-password" | "google-auth" | "dashboard">("home");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  if (currentPage === "demo") {
+    return <ProductDemo />;
+  }
+
+  if (currentPage === "login") {
+    return (
+      <LoginSignup
+        onBack={() => setCurrentPage("home")}
+        onForgotPassword={() => setCurrentPage("forgot-password")}
+        onGoogleAuth={() => setCurrentPage("google-auth")}
+      />
+    );
+  }
+
+  if (currentPage === "forgot-password") {
+    return <ForgotPassword onBack={() => setCurrentPage("login")} />;
+  }
+
+  if (currentPage === "google-auth") {
+    return (
+      <GoogleAuth
+        onBack={() => setCurrentPage("login")}
+        onSuccess={() => {
+          setIsAuthenticated(true);
+          setCurrentPage("dashboard");
+        }}
+      />
+    );
+  }
+
+  if (currentPage === "dashboard" || isAuthenticated) {
+    return (
+      <Dashboard
+        onLogout={() => {
+          setIsAuthenticated(false);
+          setCurrentPage("home");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -16,7 +66,10 @@ export default function App() {
             <a href="#beneficios" className="text-muted-foreground hover:text-primary transition-colors">Benefícios</a>
             <a href="#contato" className="text-muted-foreground hover:text-primary transition-colors">Contato</a>
           </nav>
-          <button className="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors">
+          <button
+            onClick={() => setCurrentPage("login")}
+            className="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
             Começar Agora
           </button>
         </div>
@@ -39,10 +92,16 @@ export default function App() {
                 agilidade e controle total de produtos, vendas e relatórios.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-primary text-primary-foreground px-8 py-4 rounded-lg hover:bg-primary/90 transition-colors shadow-lg">
+                <button
+                  onClick={() => setCurrentPage("login")}
+                  className="bg-primary text-primary-foreground px-8 py-4 rounded-lg hover:bg-primary/90 transition-colors shadow-lg"
+                >
                   Teste Grátis por 14 Dias
                 </button>
-                <button className="border-2 border-primary text-primary px-8 py-4 rounded-lg hover:bg-primary/5 transition-colors">
+                <button
+                  onClick={() => setCurrentPage("demo")}
+                  className="border-2 border-primary text-primary px-8 py-4 rounded-lg hover:bg-primary/5 transition-colors"
+                >
                   Ver Demonstração
                 </button>
               </div>
@@ -197,7 +256,7 @@ export default function App() {
               <div className="text-center mb-8">
                 <p className="text-muted-foreground mb-2">A partir de</p>
                 <div className="flex items-baseline justify-center gap-2">
-                  <span className="text-5xl font-bold text-primary">R$ 49</span>
+                  <span className="text-5xl font-bold text-primary">R$ 99,90</span>
                   <span className="text-muted-foreground">/mês</span>
                 </div>
               </div>
@@ -216,7 +275,10 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <button className="w-full bg-primary text-primary-foreground py-4 rounded-lg hover:bg-primary/90 transition-colors shadow-lg">
+              <button
+                onClick={() => setCurrentPage("login")}
+                className="w-full bg-primary text-primary-foreground py-4 rounded-lg hover:bg-primary/90 transition-colors shadow-lg"
+              >
                 Começar Teste Grátis
               </button>
               <p className="text-center text-sm text-muted-foreground mt-4">
@@ -242,7 +304,10 @@ export default function App() {
             <p className="text-lg text-blue-100 mb-8 max-w-2xl mx-auto">
               Junte-se a centenas de mercadinhos que já automatizaram seu controle de estoque
             </p>
-            <button className="bg-white text-primary px-8 py-4 rounded-lg hover:bg-blue-50 transition-colors shadow-xl">
+            <button
+              onClick={() => setCurrentPage("login")}
+              className="bg-white text-primary px-8 py-4 rounded-lg hover:bg-blue-50 transition-colors shadow-xl"
+            >
               Começar Agora Gratuitamente
             </button>
           </motion.div>
