@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_READY } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_READY, isDemoSession } from "@/integrations/supabase/client";
 import type { UserProfile, LoginFormData, SignupFormData } from "@/types";
 
 const delay = (ms = 800) => new Promise((res) => setTimeout(res, ms));
@@ -16,7 +16,7 @@ const MOCK_USER: UserProfile = {
  * @supabase supabase.auth.signInWithPassword({ email, password })
  */
 export async function login(data: LoginFormData): Promise<UserProfile> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data: authData, error } = await (supabase as any).auth.signInWithPassword({
       email: data.email,
       password: data.password,
@@ -53,12 +53,25 @@ export async function login(data: LoginFormData): Promise<UserProfile> {
 
   await delay();
 
-  // Simulação: qualquer email/senha válidos fazem login
+  // Simulação: qualquer e-mail/senha válidos fazem login
   if (!data.email || !data.password) {
     throw new Error("E-mail e senha são obrigatórios.");
   }
 
   return { ...MOCK_USER, email: data.email };
+}
+
+/** Realiza login em modo de demonstração */
+export async function loginDemo(): Promise<UserProfile> {
+  localStorage.setItem("prateleira_demo", "true");
+  await delay(500);
+  return {
+    id: "usr_demo",
+    name: "Usuário de Demonstração",
+    email: "demo@prateleira.com",
+    role: "admin",
+    storeName: "Supermercado Demo S.A.",
+  };
 }
 
 /** Realiza cadastro de novo usuário
@@ -69,7 +82,7 @@ export async function signup(data: SignupFormData): Promise<UserProfile> {
     throw new Error("As senhas não coincidem.");
   }
 
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data: authData, error } = await (supabase as any).auth.signUp({
       email: data.email,
       password: data.password,
@@ -112,7 +125,10 @@ export async function signup(data: SignupFormData): Promise<UserProfile> {
  * @supabase supabase.auth.signOut()
  */
 export async function logout(): Promise<void> {
-  if (SUPABASE_READY) {
+  const wasDemo = isDemoSession();
+  localStorage.removeItem("prateleira_demo");
+
+  if (SUPABASE_READY && !wasDemo) {
     const { error } = await (supabase as any).auth.signOut();
     if (error) throw error;
     return;
@@ -124,7 +140,7 @@ export async function logout(): Promise<void> {
  * @supabase supabase.auth.resetPasswordForEmail(email, { redirectTo })
  */
 export async function forgotPassword(email: string): Promise<void> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { error } = await (supabase as any).auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/login`,
     });
@@ -139,7 +155,7 @@ export async function forgotPassword(email: string): Promise<void> {
  * @supabase supabase.auth.signInWithOAuth({ provider: 'google' })
  */
 export async function signInWithGoogle(): Promise<UserProfile> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { error } = await (supabase as any).auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -157,6 +173,16 @@ export async function signInWithGoogle(): Promise<UserProfile> {
  * @supabase supabase.auth.getSession()
  */
 export async function getSession(): Promise<UserProfile | null> {
+  if (isDemoSession()) {
+    return {
+      id: "usr_demo",
+      name: "Usuário de Demonstração",
+      email: "demo@prateleira.com",
+      role: "admin",
+      storeName: "Supermercado Demo S.A.",
+    };
+  }
+
   if (SUPABASE_READY) {
     const { data: { session }, error } = await (supabase as any).auth.getSession();
     if (error || !session) return null;
@@ -198,7 +224,7 @@ export async function updateProfile(
   userId: string,
   data: Partial<UserProfile>
 ): Promise<UserProfile> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.storeName !== undefined) updateData.store_name = data.storeName;

@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_READY } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_READY, isDemoSession } from "@/integrations/supabase/client";
 import { MOCK_SALES } from "@/data/mockData";
 import type { Sale, CreateSaleInput, SalesSummary } from "@/types";
 import { getTodayISO } from "@/utils/formatters";
@@ -36,7 +36,7 @@ function mapToDbInsert(s: CreateSaleInput) {
  * @supabase supabase.from('sales').select('*').order('date', { ascending: false })
  */
 export async function getSales(): Promise<Sale[]> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("sales")
       .select("*")
@@ -54,7 +54,7 @@ export async function getSales(): Promise<Sale[]> {
  * @supabase supabase.from('sales').select('*').eq('id', id).single()
  */
 export async function getSaleById(id: number): Promise<Sale | null> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("sales")
       .select("*")
@@ -73,7 +73,7 @@ export async function getSaleById(id: number): Promise<Sale | null> {
  * @supabase supabase.from('sales').insert(data).select().single()
  */
 export async function createSale(data: CreateSaleInput): Promise<Sale> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const dbData = mapToDbInsert(data);
     const { data: inserted, error } = await (supabase as any)
       .from("sales")
@@ -99,7 +99,7 @@ export async function createSale(data: CreateSaleInput): Promise<Sale> {
  * @supabase Agrega dados de vendas dinamicamente
  */
 export async function getSalesSummary(): Promise<SalesSummary> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const currentSales = await getSales();
     const today = getTodayISO();
     const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
@@ -175,7 +175,7 @@ export async function getSalesByDateRange(
   startDate: string,
   endDate: string
 ): Promise<Sale[]> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("sales")
       .select("*")

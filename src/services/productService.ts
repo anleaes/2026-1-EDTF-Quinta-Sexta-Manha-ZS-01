@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_READY } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_READY, isDemoSession } from "@/integrations/supabase/client";
 import { MOCK_PRODUCTS } from "@/data/mockData";
 import type { Product, CreateProductInput, UpdateProductInput } from "@/types";
 
@@ -55,7 +55,7 @@ function mapToDbUpdate(p: UpdateProductInput) {
  * @supabase supabase.from('products').select('*').order('name')
  */
 export async function getProducts(): Promise<Product[]> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("products")
       .select("*")
@@ -73,7 +73,7 @@ export async function getProducts(): Promise<Product[]> {
  * @supabase supabase.from('products').select('*').eq('id', id).single()
  */
 export async function getProductById(id: number): Promise<Product | null> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("products")
       .select("*")
@@ -92,7 +92,7 @@ export async function getProductById(id: number): Promise<Product | null> {
  * @supabase supabase.from('products').insert(data).select().single()
  */
 export async function createProduct(data: CreateProductInput): Promise<Product> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const dbData = mapToDbInsert(data);
     const { data: inserted, error } = await (supabase as any)
       .from("products")
@@ -122,7 +122,7 @@ export async function updateProduct(
   id: number,
   data: UpdateProductInput
 ): Promise<Product> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const dbData = mapToDbUpdate(data);
     const { data: updated, error } = await (supabase as any)
       .from("products")
@@ -152,7 +152,7 @@ export async function updateProduct(
  * @supabase supabase.from('products').delete().eq('id', id)
  */
 export async function deleteProduct(id: number): Promise<void> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { error } = await (supabase as any)
       .from("products")
       .delete()
@@ -173,7 +173,7 @@ export async function checkCodeExists(
   code: string,
   excludeId?: number
 ): Promise<boolean> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     let query = (supabase as any)
       .from("products")
       .select("id")

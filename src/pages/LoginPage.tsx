@@ -8,10 +8,19 @@ import type { LoginFormData, SignupFormData } from "@/types";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, signup, signInWithGoogle, isLoading } = useAuthContext();
+  const { login, loginAsDemo, signup, signInWithGoogle, isLoading } = useAuthContext();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ name: "", email: "", password: "", confirmPassword: "" });
+
+  const handleDemo = async () => {
+    try {
+      await loginAsDemo();
+      navigate("/dashboard");
+    } catch {
+      toast.error("Erro ao entrar em modo demonstração.");
+    }
+  };
 
   const set = (field: string, value: string) => setFormData((prev) => ({ ...prev, [field]: value }));
 
@@ -133,6 +142,13 @@ export function LoginPage() {
                 className="w-full bg-primary text-white py-3 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-md disabled:opacity-60 mt-2">
                 {isLoading ? "Aguarde..." : isLogin ? "Entrar" : "Criar Conta"}
               </button>
+
+              {isLogin && (
+                <button type="button" onClick={handleDemo} disabled={isLoading}
+                  className="w-full bg-gray-800 text-white py-3 rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors shadow-md disabled:opacity-60 mt-2">
+                  Ver Demo (Dados Simulados)
+                </button>
+              )}
             </form>
 
             <div className="relative my-5">

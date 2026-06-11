@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_READY } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_READY, isDemoSession } from "@/integrations/supabase/client";
 import type { Product, CategoryInventory } from "@/types";
 import { getProducts, updateProduct } from "./productService";
 import * as productService from "./productService";
@@ -27,7 +27,7 @@ function mapDbProduct(p: any): Product {
  * @supabase supabase.from('low_stock_products').select('*')
  */
 export async function getLowStockProducts(): Promise<Product[]> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("low_stock_products")
       .select("*");
@@ -47,7 +47,7 @@ export async function restockProduct(
   productId: number,
   quantity: number
 ): Promise<Product> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     if (quantity <= 0) throw new Error("Quantidade deve ser maior que zero.");
     
     const { error } = await (supabase as any).rpc("restock_product", {
@@ -78,7 +78,7 @@ export async function restockProduct(
  * @supabase supabase.rpc('get_inventory_value')
  */
 export async function getTotalStockValue(): Promise<number> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any).rpc("get_inventory_value");
     if (error) throw error;
     return data || 0;
@@ -92,7 +92,7 @@ export async function getTotalStockValue(): Promise<number> {
  * @supabase Calcular dinamicamente se o RPC não estiver presente
  */
 export async function getCategoryInventory(): Promise<CategoryInventory[]> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const products = await getProducts();
     const categoriesMap: Record<string, { totalItems: number; totalValue: number; productCount: number }> = {};
 
@@ -131,7 +131,7 @@ export async function createInventoryAdjustment(
   newQuantity: number,
   reason: string
 ): Promise<Product> {
-  if (SUPABASE_READY) {
+  if (SUPABASE_READY && !isDemoSession()) {
     const product = await productService.getProductById(productId);
     if (!product) throw new Error(`Produto ${productId} não encontrado.`);
 

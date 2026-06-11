@@ -11,6 +11,10 @@ const isPlaceholder = (val?: string) => {
 
 export const SUPABASE_READY = !isPlaceholder(supabaseUrl) && !isPlaceholder(supabaseAnonKey);
 
+export const isDemoSession = (): boolean => {
+  return localStorage.getItem("prateleira_demo") === "true";
+};
+
 export const supabase = createClient<Database>(
   SUPABASE_READY ? supabaseUrl! : 'https://placeholder.supabase.co',
   SUPABASE_READY ? supabaseAnonKey! : 'placeholder-key',

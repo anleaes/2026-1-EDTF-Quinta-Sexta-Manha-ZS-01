@@ -5,6 +5,7 @@ import * as authService from "@/services/authService";
 // ── Tipos do contexto ──────────────────────────────────────
 interface AuthContextType extends AuthState {
   login: (data: LoginFormData) => Promise<void>;
+  loginAsDemo: () => Promise<void>;
   signup: (data: SignupFormData) => Promise<void>;
   logout: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -24,6 +25,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       const profile = await authService.login(data);
+      setUser(profile);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const loginAsDemo = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const profile = await authService.loginDemo();
       setUser(profile);
     } finally {
       setIsLoading(false);
@@ -80,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: user !== null,
         isLoading,
         login,
+        loginAsDemo,
         signup,
         logout,
         signInWithGoogle,
