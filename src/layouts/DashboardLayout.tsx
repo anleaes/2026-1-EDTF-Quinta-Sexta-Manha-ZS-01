@@ -3,6 +3,7 @@ import { Outlet } from "react-router";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { SettingsModal } from "@/components/features/settings/SettingsModal";
+import { AIFloatingButton } from "@/components/features/ai/AIFloatingButton";
 
 export function DashboardLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -28,6 +29,9 @@ export function DashboardLayout() {
       </div>
 
       <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+      {/* Assistente de IA flutuante — disponível em todas as páginas */}
+      <AIFloatingButton />
     </div>
   );
 }
