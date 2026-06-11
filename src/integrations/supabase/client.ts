@@ -1,36 +1,26 @@
-// ============================================================
-// SUPABASE CLIENT
-// Configure as variáveis de ambiente e descomente para ativar
-// ============================================================
-//
-// COMO ATIVAR:
-// 1. Instale: pnpm add @supabase/supabase-js
-// 2. Crie .env.local com:
-//    VITE_SUPABASE_URL=https://seu-projeto.supabase.co
-//    VITE_SUPABASE_ANON_KEY=sua-chave-anonima
-// 3. Descomente o código abaixo
-// 4. Substitua as funções dos services/ pelas chamadas do Supabase
-//
-// ============================================================
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from './types'
 
-// import { createClient } from '@supabase/supabase-js'
-// import type { Database } from './types'
-//
-// const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-// const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-//
-// if (!supabaseUrl || !supabaseAnonKey) {
-//   throw new Error('Missing Supabase environment variables')
-// }
-//
-// export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-//   auth: {
-//     autoRefreshToken: true,
-//     persistSession: true,
-//     detectSessionInUrl: true,
-//   },
-// })
-//
-// export default supabase
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY
 
-export const SUPABASE_READY = false; // Alterar para true após configurar
+// Verifica se os valores são os placeholders padrões ou estão vazios
+const isPlaceholder = (val?: string) => {
+  return !val || val.includes('seu-projeto') || val.includes('sua-chave-anonima') || val === '';
+};
+
+export const SUPABASE_READY = !isPlaceholder(supabaseUrl) && !isPlaceholder(supabaseAnonKey);
+
+export const supabase = createClient<Database>(
+  SUPABASE_READY ? supabaseUrl! : 'https://placeholder.supabase.co',
+  SUPABASE_READY ? supabaseAnonKey! : 'placeholder-key',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+  }
+)
+
+export default supabase;
