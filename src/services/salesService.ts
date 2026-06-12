@@ -7,7 +7,6 @@ const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
 let salesStore: Sale[] = [...MOCK_SALES];
 
-// Mapeadores auxiliares para converter camelCase (Aplicação) <-> snake_case (Supabase)
 function mapDbSale(s: any): Sale {
   return {
     id: s.id,
@@ -21,26 +20,13 @@ function mapDbSale(s: any): Sale {
   };
 }
 
-function mapToDbInsert(s: CreateSaleInput) {
-  return {
-    date: s.date,
-    product_id: s.productId || 0,
-    product_name: s.product,
-    quantity: s.quantity,
-    total: s.total,
-    customer: s.customer,
-  };
-}
-
-/** Busca todas as vendas ordenadas por data desc
- * @supabase supabase.from('sales').select('*').order('date', { ascending: false })
- */
+/** Busca todas as vendas ordenadas por data desc */
 export async function getSales(): Promise<Sale[]> {
   if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
       .from("sales")
       .select("*")
-      .order("date", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
     return (data || []).map(mapDbSale);
@@ -50,9 +36,7 @@ export async function getSales(): Promise<Sale[]> {
   return [...salesStore].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** Busca venda por ID
- * @supabase supabase.from('sales').select('*').eq('id', id).single()
- */
+/** Busca venda por ID */
 export async function getSaleById(id: number): Promise<Sale | null> {
   if (SUPABASE_READY && !isDemoSession()) {
     const { data, error } = await (supabase as any)
@@ -69,22 +53,59 @@ export async function getSaleById(id: number): Promise<Sale | null> {
   return salesStore.find((s) => s.id === id) ?? null;
 }
 
-/** Cria nova venda
- * @supabase supabase.from('sales').insert(data).select().single()
+/**
+ * Cria nova venda com dedução atômica de estoque via RPC.
+ * No Supabase: usa create_sale_and_deduct_stock para garantir consistência.
+ * No modo demo: valida e atualiza o store local.
+ * Retorna { sale, newStock } — o StoreContext usa newStock para atualizar o produto sem refetch.
  */
-export async function createSale(data: CreateSaleInput): Promise<Sale> {
+export async function createSaleAtomic(
+  data: CreateSaleInput,
+  currentStock: number
+): Promise<{ sale: Sale; newStock: number }> {
+  // Validação antecipada de estoque (falha rápida em qualquer modo)
+  if (data.quantity > currentStock) {
+    throw new Error(
+      `Estoque insuficiente. Disponível: ${currentStock}, solicitado: ${data.quantity}.`
+    );
+  }
+  if (data.quantity <= 0) throw new Error("Quantidade deve ser maior que zero.");
+
   if (SUPABASE_READY && !isDemoSession()) {
-    const dbData = mapToDbInsert(data);
-    const { data: inserted, error } = await (supabase as any)
-      .from("sales")
-      .insert(dbData)
-      .select()
-      .single();
+    const today = getTodayISO();
+    const { data: result, error } = await (supabase as any).rpc(
+      "create_sale_and_deduct_stock",
+      {
+        p_product_id: data.productId,
+        p_product_name: data.product,
+        p_quantity: data.quantity,
+        p_total: data.total,
+        p_customer: data.customer || "Cliente",
+        p_date: data.date || today,
+      }
+    );
 
     if (error) throw error;
-    return mapDbSale(inserted);
+
+    const row = Array.isArray(result) ? result[0] : result;
+    const newStock: number = row?.new_stock ?? currentStock - data.quantity;
+    const saleId: number = row?.sale_id ?? 0;
+
+    const sale: Sale = {
+      id: saleId,
+      date: data.date || today,
+      product: data.product,
+      productId: data.productId,
+      quantity: data.quantity,
+      total: data.total,
+      customer: data.customer || "Cliente",
+      createdAt: new Date().toISOString(),
+    };
+
+    return { sale, newStock };
   }
 
+  // Modo demo / mock
   await delay();
   const newSale: Sale = {
     ...data,
@@ -92,65 +113,41 @@ export async function createSale(data: CreateSaleInput): Promise<Sale> {
     createdAt: new Date().toISOString(),
   };
   salesStore = [newSale, ...salesStore];
-  return newSale;
+  return { sale: newSale, newStock: currentStock - data.quantity };
 }
 
-/** Calcula resumo de vendas
- * @supabase Agrega dados de vendas dinamicamente
- */
+/** Mantida para compatibilidade — redireciona para createSaleAtomic */
+export async function createSale(data: CreateSaleInput): Promise<Sale> {
+  const { sale } = await createSaleAtomic(data, Infinity);
+  return sale;
+}
+
+/** Calcula resumo de vendas */
 export async function getSalesSummary(): Promise<SalesSummary> {
-  if (SUPABASE_READY && !isDemoSession()) {
-    const currentSales = await getSales();
-    const today = getTodayISO();
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  const currentSales = SUPABASE_READY && !isDemoSession()
+    ? await getSales()
+    : salesStore;
 
-    const todaySales = currentSales.filter((s) => s.date === today);
-    const yesterdaySales = currentSales.filter((s) => s.date === yesterday);
-
-    const totalToday = todaySales.reduce((sum, s) => sum + s.total, 0);
-    const totalYesterday = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
-
-    const totalMonth = currentSales
-      .filter((s) => s.date.startsWith(today.substring(0, 7)))
-      .reduce((sum, s) => sum + s.total, 0);
-
-    const averageTicket =
-      currentSales.length > 0
-        ? currentSales.reduce((sum, s) => sum + s.total, 0) / currentSales.length
-        : 0;
-
-    const growth =
-      totalYesterday > 0
-        ? parseFloat((((totalToday - totalYesterday) / totalYesterday) * 100).toFixed(1))
-        : 0;
-
-    return {
-      totalToday,
-      totalYesterday,
-      totalMonth,
-      averageTicket,
-      salesCount: currentSales.length,
-      growth,
-    };
-  }
-
-  await delay(100);
   const today = getTodayISO();
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  const thisMonth = today.substring(0, 7);
+  const lastMonth = new Date(new Date().setMonth(new Date().getMonth() - 1))
+    .toISOString()
+    .substring(0, 7);
 
-  const todaySales = salesStore.filter((s) => s.date === today);
-  const yesterdaySales = salesStore.filter((s) => s.date === yesterday);
+  const todaySales = currentSales.filter((s) => s.date === today);
+  const yesterdaySales = currentSales.filter((s) => s.date === yesterday);
+  const thisMonthSales = currentSales.filter((s) => s.date.startsWith(thisMonth));
+  const lastMonthSales = currentSales.filter((s) => s.date.startsWith(lastMonth));
 
   const totalToday = todaySales.reduce((sum, s) => sum + s.total, 0);
   const totalYesterday = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
-
-  const totalMonth = salesStore
-    .filter((s) => s.date.startsWith(today.substring(0, 7)))
-    .reduce((sum, s) => sum + s.total, 0);
+  const totalMonth = thisMonthSales.reduce((sum, s) => sum + s.total, 0);
+  const lastMonthTotal = lastMonthSales.reduce((sum, s) => sum + s.total, 0);
 
   const averageTicket =
-    salesStore.length > 0
-      ? salesStore.reduce((sum, s) => sum + s.total, 0) / salesStore.length
+    currentSales.length > 0
+      ? currentSales.reduce((sum, s) => sum + s.total, 0) / currentSales.length
       : 0;
 
   const growth =
@@ -158,19 +155,23 @@ export async function getSalesSummary(): Promise<SalesSummary> {
       ? parseFloat((((totalToday - totalYesterday) / totalYesterday) * 100).toFixed(1))
       : 0;
 
+  const monthGrowth =
+    lastMonthTotal > 0
+      ? parseFloat((((totalMonth - lastMonthTotal) / lastMonthTotal) * 100).toFixed(1))
+      : 0;
+
   return {
     totalToday,
     totalYesterday,
     totalMonth,
     averageTicket,
-    salesCount: salesStore.length,
+    salesCount: currentSales.length,
     growth,
+    monthGrowth,
   };
 }
 
-/** Busca vendas de um período
- * @supabase supabase.from('sales').select('*').gte('date', startDate).lte('date', endDate)
- */
+/** Busca vendas de um período */
 export async function getSalesByDateRange(
   startDate: string,
   endDate: string

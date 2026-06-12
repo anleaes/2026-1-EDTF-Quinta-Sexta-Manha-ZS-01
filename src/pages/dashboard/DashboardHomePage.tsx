@@ -2,7 +2,7 @@ import { DashboardStats } from "@/components/features/dashboard/DashboardStats";
 import { SalesChart } from "@/components/features/dashboard/SalesChart";
 import { CategoryChart } from "@/components/features/dashboard/CategoryChart";
 import { RecentSalesTable } from "@/components/features/dashboard/RecentSalesTable";
-import { AIInsightsCard } from "@/components/features/ai/AIInsightsCard";
+import { StockForecastCard } from "@/components/features/ai/StockForecastCard";
 
 export function DashboardHomePage() {
   return (
@@ -18,7 +18,8 @@ export function DashboardHomePage() {
           <RecentSalesTable />
         </div>
         <div>
-          <AIInsightsCard />
+          {/* Previsão de Estoque com análise de risco por produto */}
+          <StockForecastCard />
         </div>
       </div>
     </div>

@@ -36,7 +36,7 @@ interface StoreContextType {
   editProduct: (id: number, data: UpdateProductInput) => Promise<Product>;
   removeProduct: (id: number) => Promise<void>;
 
-  // Operações de vendas
+  // Operações de vendas (retorna sale + produto atualizado)
   addSale: (data: CreateSaleInput) => Promise<Sale>;
 
   // Operações de estoque
@@ -117,24 +117,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Operações de vendas ──────────────────────────────────
-  const addSale = useCallback(async (data: CreateSaleInput): Promise<Sale> => {
-    const newSale = await salesService.createSale(data);
-    setSales((prev) => [newSale, ...prev]);
+  const addSale = useCallback(
+    async (data: CreateSaleInput): Promise<Sale> => {
+      // Encontrar o produto para validar o estoque
+      const product = products.find((p) => p.id === data.productId);
+      const currentStock = product?.stock ?? Infinity;
 
-    // Deduzir do estoque via atualização funcional (sem closure em products)
-    if (data.productId) {
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === data.productId
-            ? { ...p, stock: Math.max(0, p.stock - data.quantity) }
-            : p
-        )
-      );
-    }
+      // createSaleAtomic valida o estoque e retorna o novo valor
+      const { sale, newStock } = await salesService.createSaleAtomic(data, currentStock);
 
-    salesService.getSalesSummary().then(setSalesSummary).catch(() => {});
-    return newSale;
-  }, []);
+      // Atualizar vendas
+      setSales((prev) => [sale, ...prev]);
+
+      // Atualizar estoque do produto diretamente com o valor retornado pelo banco
+      if (data.productId !== undefined) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === data.productId ? { ...p, stock: newStock } : p
+          )
+        );
+      }
+
+      // Atualizar sumário de vendas em background
+      salesService.getSalesSummary().then(setSalesSummary).catch(() => {});
+
+      return sale;
+    },
+    [products]
+  );
 
   // ── Operações de estoque ─────────────────────────────────
   const restock = useCallback(async (productId: number, quantity: number): Promise<Product> => {

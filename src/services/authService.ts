@@ -1,9 +1,7 @@
 import { supabase, SUPABASE_READY, isDemoSession } from "@/integrations/supabase/client";
 import type { UserProfile, LoginFormData, SignupFormData } from "@/types";
 
-const delay = (ms = 800) => new Promise((res) => setTimeout(res, ms));
-
-// Usuário simulado
+// Usuário simulado para modo sem Supabase
 const MOCK_USER: UserProfile = {
   id: "usr_001",
   name: "Admin",
@@ -12,9 +10,30 @@ const MOCK_USER: UserProfile = {
   storeName: "Mini Mercado Central",
 };
 
-/** Realiza login com email e senha
- * @supabase supabase.auth.signInWithPassword({ email, password })
- */
+// Converte dados do banco de profiles para UserProfile
+function mapProfile(authUser: any, profile: any): UserProfile {
+  return {
+    id: authUser.id,
+    name: profile?.name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "Usuário",
+    email: authUser.email || profile?.email || "",
+    role: (profile?.role as any) || "viewer",
+    avatarUrl: profile?.avatar_url || authUser.user_metadata?.avatar_url || undefined,
+    storeName: profile?.store_name || undefined,
+    createdAt: profile?.created_at || new Date().toISOString(),
+  };
+}
+
+// Busca o perfil estendido de um usuário autenticado
+async function fetchProfile(userId: string): Promise<any | null> {
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  return data;
+}
+
+/** Realiza login com email e senha */
 export async function login(data: LoginFormData): Promise<UserProfile> {
   if (SUPABASE_READY && !isDemoSession()) {
     const { data: authData, error } = await (supabase as any).auth.signInWithPassword({
@@ -24,47 +43,20 @@ export async function login(data: LoginFormData): Promise<UserProfile> {
     if (error) throw error;
     if (!authData.user) throw new Error("Usuário não encontrado.");
 
-    const { data: profile, error: profileError } = await (supabase as any)
-      .from("profiles")
-      .select("*")
-      .eq("id", authData.user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      return {
-        id: authData.user.id,
-        name: authData.user.user_metadata?.name || "Usuário",
-        email: authData.user.email || "",
-        role: "viewer",
-        storeName: "",
-      };
-    }
-
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-      avatarUrl: profile.avatar_url || undefined,
-      storeName: profile.store_name || undefined,
-      createdAt: profile.created_at,
-    };
+    const profile = await fetchProfile(authData.user.id);
+    return mapProfile(authData.user, profile);
   }
 
-  await delay();
-
-  // Simulação: qualquer e-mail/senha válidos fazem login
-  if (!data.email || !data.password) {
-    throw new Error("E-mail e senha são obrigatórios.");
-  }
-
+  // Fallback mock
+  await new Promise((r) => setTimeout(r, 600));
+  if (!data.email || !data.password) throw new Error("E-mail e senha são obrigatórios.");
   return { ...MOCK_USER, email: data.email };
 }
 
 /** Realiza login em modo de demonstração */
 export async function loginDemo(): Promise<UserProfile> {
   localStorage.setItem("prateleira_demo", "true");
-  await delay(500);
+  await new Promise((r) => setTimeout(r, 400));
   return {
     id: "usr_demo",
     name: "Usuário de Demonstração",
@@ -74,9 +66,7 @@ export async function loginDemo(): Promise<UserProfile> {
   };
 }
 
-/** Realiza cadastro de novo usuário
- * @supabase supabase.auth.signUp({ email, password, options: { data: { name } } })
- */
+/** Realiza cadastro de novo usuário */
 export async function signup(data: SignupFormData): Promise<UserProfile> {
   if (data.password !== data.confirmPassword) {
     throw new Error("As senhas não coincidem.");
@@ -86,44 +76,22 @@ export async function signup(data: SignupFormData): Promise<UserProfile> {
     const { data: authData, error } = await (supabase as any).auth.signUp({
       email: data.email,
       password: data.password,
-      options: {
-        data: {
-          name: data.name,
-        },
-      },
+      options: { data: { name: data.name } },
     });
     if (error) throw error;
     if (!authData.user) throw new Error("Falha no cadastro.");
 
-    const { data: profile } = await (supabase as any)
-      .from("profiles")
-      .select("*")
-      .eq("id", authData.user.id)
-      .maybeSingle();
-
-    return {
-      id: authData.user.id,
-      name: profile?.name || data.name,
-      email: authData.user.email || data.email,
-      role: (profile?.role as any) || "viewer",
-      avatarUrl: profile?.avatar_url || undefined,
-      storeName: profile?.store_name || undefined,
-      createdAt: profile?.created_at || new Date().toISOString(),
-    };
+    // Após signUp com confirmação de email, o usuário ainda não tem sessão ativa
+    // Retornar objeto com os dados básicos
+    const profile = await fetchProfile(authData.user.id);
+    return mapProfile(authData.user, profile);
   }
 
-  await delay();
-
-  return {
-    ...MOCK_USER,
-    name: data.name,
-    email: data.email,
-  };
+  await new Promise((r) => setTimeout(r, 800));
+  return { ...MOCK_USER, name: data.name, email: data.email };
 }
 
-/** Realiza logout
- * @supabase supabase.auth.signOut()
- */
+/** Realiza logout */
 export async function logout(): Promise<void> {
   const wasDemo = isDemoSession();
   localStorage.removeItem("prateleira_demo");
@@ -133,12 +101,10 @@ export async function logout(): Promise<void> {
     if (error) throw error;
     return;
   }
-  await delay(300);
+  await new Promise((r) => setTimeout(r, 200));
 }
 
-/** Envia e-mail de recuperação de senha
- * @supabase supabase.auth.resetPasswordForEmail(email, { redirectTo })
- */
+/** Envia e-mail de recuperação de senha */
 export async function forgotPassword(email: string): Promise<void> {
   if (SUPABASE_READY && !isDemoSession()) {
     const { error } = await (supabase as any).auth.resetPasswordForEmail(email, {
@@ -147,32 +113,36 @@ export async function forgotPassword(email: string): Promise<void> {
     if (error) throw error;
     return;
   }
-  await delay();
+  await new Promise((r) => setTimeout(r, 800));
   if (!email) throw new Error("E-mail é obrigatório.");
 }
 
-/** Autentica com Google OAuth
- * @supabase supabase.auth.signInWithOAuth({ provider: 'google' })
+/**
+ * Autentica com Google OAuth.
+ * OAuth faz REDIRECT do browser — o retorno é capturado pelo onAuthStateChange.
+ * Não retorna UserProfile diretamente.
  */
-export async function signInWithGoogle(): Promise<UserProfile> {
+export async function signInWithGoogle(): Promise<void> {
   if (SUPABASE_READY && !isDemoSession()) {
     const { error } = await (supabase as any).auth.signInWithOAuth({
-      provider: 'google',
+      provider: "google",
       options: {
         redirectTo: `${window.location.origin}/dashboard`,
-      }
+      },
     });
     if (error) throw error;
-    return MOCK_USER;
+    // Após este ponto o browser será redirecionado — nenhum código executará
+    return;
   }
-  await delay(1500);
-  return MOCK_USER;
+  // Modo offline: simular como se o Google tivesse autenticado
+  await new Promise((r) => setTimeout(r, 1000));
+  // O caller (AuthContext) vai setar o usuário manualmente no modo mock
+  throw new Error("Google OAuth requer Supabase configurado. Use email/senha no modo offline.");
 }
 
-/** Verifica sessão existente
- * @supabase supabase.auth.getSession()
- */
+/** Verifica sessão existente (chamado no mount do AuthContext) */
 export async function getSession(): Promise<UserProfile | null> {
+  // Modo demo
   if (isDemoSession()) {
     return {
       id: "usr_demo",
@@ -187,45 +157,47 @@ export async function getSession(): Promise<UserProfile | null> {
     const { data: { session }, error } = await (supabase as any).auth.getSession();
     if (error || !session) return null;
 
-    const { data: profile } = await (supabase as any)
-      .from("profiles")
-      .select("*")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    if (!profile) {
-      return {
-        id: session.user.id,
-        name: session.user.user_metadata?.name || "Usuário",
-        email: session.user.email || "",
-        role: "viewer",
-        storeName: "",
-      };
-    }
-
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-      avatarUrl: profile.avatar_url || undefined,
-      storeName: profile.store_name || undefined,
-      createdAt: profile.created_at,
-    };
+    const profile = await fetchProfile(session.user.id);
+    return mapProfile(session.user, profile);
   }
-  await delay(200);
+
   return null;
 }
 
-/** Atualiza perfil do usuário
- * @supabase supabase.from('profiles').update(data).eq('id', userId)
+/**
+ * Escuta mudanças de estado de autenticação (login, logout, OAuth callback, refresh de token).
+ * Retorna função de unsubscribe.
  */
+export function subscribeToAuthChanges(
+  callback: (user: UserProfile | null) => void
+): () => void {
+  if (!SUPABASE_READY) return () => {};
+
+  const { data: { subscription } } = (supabase as any).auth.onAuthStateChange(
+    async (_event: string, session: any) => {
+      if (!session?.user) {
+        // Ignorar se for modo demo (controlado pelo localStorage)
+        if (!isDemoSession()) {
+          callback(null);
+        }
+        return;
+      }
+
+      const profile = await fetchProfile(session.user.id);
+      callback(mapProfile(session.user, profile));
+    }
+  );
+
+  return () => subscription.unsubscribe();
+}
+
+/** Atualiza perfil do usuário */
 export async function updateProfile(
   userId: string,
   data: Partial<UserProfile>
 ): Promise<UserProfile> {
   if (SUPABASE_READY && !isDemoSession()) {
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.storeName !== undefined) updateData.store_name = data.storeName;
     if (data.avatarUrl !== undefined) updateData.avatar_url = data.avatarUrl;
@@ -239,17 +211,9 @@ export async function updateProfile(
       .single();
 
     if (error) throw error;
-
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-      avatarUrl: profile.avatar_url || undefined,
-      storeName: profile.store_name || undefined,
-      createdAt: profile.created_at,
-    };
+    return mapProfile({ id: userId, email: profile.email }, profile);
   }
-  await delay();
+
+  await new Promise((r) => setTimeout(r, 500));
   return { ...MOCK_USER, ...data, id: userId };
 }

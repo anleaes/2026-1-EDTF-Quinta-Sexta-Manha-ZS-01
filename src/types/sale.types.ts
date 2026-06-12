@@ -30,7 +30,8 @@ export interface SalesSummary {
   totalMonth: number;
   averageTicket: number;
   salesCount: number;
-  growth: number; // percentual
+  growth: number;       // crescimento vs ontem (%)
+  monthGrowth?: number; // crescimento vs mês anterior (%)
 }
 
 /** Dado para gráfico de vendas diárias */

@@ -1,9 +1,17 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react";
 import type { AuthState, UserProfile, LoginFormData, SignupFormData } from "@/types";
 import * as authService from "@/services/authService";
 
 // ── Tipos do contexto ──────────────────────────────────────
 interface AuthContextType extends AuthState {
+  isInitializing: boolean;
   login: (data: LoginFormData) => Promise<void>;
   loginAsDemo: () => Promise<void>;
   signup: (data: SignupFormData) => Promise<void>;
@@ -20,7 +28,38 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // isInitializing: true enquanto verifica sessão existente no mount
+  const [isInitializing, setIsInitializing] = useState(true);
 
+  // ── Verificar sessão existente ao carregar o app ──────────
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    async function init() {
+      try {
+        // 1. Verificar sessão atual (JWT salvo no localStorage pelo Supabase)
+        const existingUser = await authService.getSession();
+        setUser(existingUser);
+      } catch {
+        setUser(null);
+      } finally {
+        setIsInitializing(false);
+      }
+
+      // 2. Escutar mudanças de autenticação (OAuth redirect, logout em outra aba, etc.)
+      unsubscribe = authService.subscribeToAuthChanges((updatedUser) => {
+        setUser(updatedUser);
+      });
+    }
+
+    init();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // ── Operações de auth ─────────────────────────────────────
   const login = useCallback(async (data: LoginFormData) => {
     setIsLoading(true);
     try {
@@ -64,11 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     setIsLoading(true);
     try {
-      const profile = await authService.signInWithGoogle();
-      setUser(profile);
-    } finally {
+      // OAuth redireciona o browser — onAuthStateChange vai capturar o retorno
+      await authService.signInWithGoogle();
+    } catch {
       setIsLoading(false);
     }
+    // Não fazer setIsLoading(false) aqui pois haverá redirect de página
   }, []);
 
   const forgotPassword = useCallback(async (email: string) => {
@@ -90,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: user !== null,
         isLoading,
+        isInitializing,
         login,
         loginAsDemo,
         signup,

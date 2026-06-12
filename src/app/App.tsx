@@ -15,15 +15,29 @@ import { AlertsPage } from "@/pages/dashboard/AlertsPage";
 import { InventoryPage } from "@/pages/dashboard/InventoryPage";
 import { Toaster } from "sonner";
 
+// Spinner de carregamento enquanto a sessão é verificada
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground">Carregando...</p>
+      </div>
+    </div>
+  );
+}
+
 // Protege rotas que exigem autenticação
 function PrivateRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, isInitializing } = useAuthContext();
+  if (isInitializing) return <LoadingScreen />;
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 // Redireciona usuário autenticado para fora das páginas de auth
 function PublicRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, isInitializing } = useAuthContext();
+  if (isInitializing) return <LoadingScreen />;
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <>{children}</>;
 }
 

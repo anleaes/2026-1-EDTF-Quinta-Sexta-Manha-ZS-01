@@ -2,38 +2,42 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X, Send, Sparkles, Bot, User, RotateCcw,
-  Package, TrendingDown, ShoppingCart, BarChart3,
+  Package, TrendingDown, ShoppingCart, BarChart3, AlertTriangle,
 } from "lucide-react";
 import { sendMessageToAssistant, AI_READY } from "@/integrations/ai/aiService";
 import type { AIMessage } from "@/integrations/ai/types";
-import { MOCK_PRODUCTS } from "@/data/mockData";
+import { calculateStockForecasts, forecastsToContext } from "@/integrations/ai/stockForecast";
+import { useStoreContext } from "@/context/StoreContext";
+import { isDemoSession } from "@/integrations/supabase/client";
+import { MOCK_PRODUCTS, MOCK_SALES } from "@/data/mockData";
 import { cn } from "@/components/ui/utils";
 
 // ─── Sugestões rápidas ────────────────────────────────────────
 const QUICK_SUGGESTIONS = [
-  { icon: TrendingDown, text: "Quais produtos estão no limite de estoque?" },
-  { icon: ShoppingCart,  text: "O que devo repor hoje?" },
-  { icon: BarChart3,     text: "Como foram as vendas esta semana?" },
-  { icon: Package,       text: "Quanto vale meu estoque total?" },
+  { icon: AlertTriangle, text: "Quais produtos têm risco crítico de ruptura?" },
+  { icon: TrendingDown,  text: "O que devo repor hoje?" },
+  { icon: ShoppingCart,  text: "Como foram as vendas esta semana?" },
+  { icon: BarChart3,     text: "Quanto vale meu estoque total?" },
+  { icon: Package,       text: "Quais produtos não tiveram vendas recentes?" },
 ];
 
-// ─── Mensagem de boas-vindas ──────────────────────────────────
 const WELCOME_MESSAGE: AIMessage = {
   role: "assistant",
-  content: `Olá! 👋 Sou a **Prateleira IA**, sua assistente de gestão de estoque.\n\nPosso analisar seus produtos, vendas e alertas para te ajudar a tomar melhores decisões. Use as sugestões abaixo ou faça qualquer pergunta!`,
+  content: `Olá! 👋 Sou a **Prateleira IA**, sua assistente de gestão de estoque.\n\nAnaliso seus produtos, vendas e risco de ruptura em tempo real. Use as sugestões abaixo ou faça qualquer pergunta!`,
   timestamp: new Date().toISOString(),
 };
 
 interface AIChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Pré-popula o chat com uma pergunta ao abrir */
+  initialQuestion?: string;
 }
 
-// ─── Componente de Mensagem ───────────────────────────────────
+// ─── Bubble de mensagem ───────────────────────────────────────
 function MessageBubble({ msg }: { msg: AIMessage }) {
   const isUser = msg.role === "user";
 
-  // Render markdown-like formatting (bold, code)
   const renderContent = (text: string) => {
     const lines = text.split("\n");
     return lines.map((line, i) => {
@@ -56,7 +60,6 @@ function MessageBubble({ msg }: { msg: AIMessage }) {
       transition={{ duration: 0.2 }}
       className={cn("flex items-end gap-2", isUser ? "flex-row-reverse" : "flex-row")}
     >
-      {/* Avatar */}
       <div
         className={cn(
           "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5",
@@ -67,8 +70,6 @@ function MessageBubble({ msg }: { msg: AIMessage }) {
       >
         {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
-
-      {/* Bubble */}
       <div
         className={cn(
           "max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed",
@@ -107,16 +108,26 @@ function TypingIndicator() {
 }
 
 // ─── Painel principal ─────────────────────────────────────────
-export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
+export function AIChatPanel({ isOpen, onClose, initialQuestion }: AIChatPanelProps) {
+  const { products, sales } = useStoreContext();
+  const isDemo = isDemoSession();
+
   const [messages, setMessages] = useState<AIMessage[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Contexto do negócio para injetar no prompt
+  // Usar dados reais ou mock dependendo do modo
+  const effectiveProducts = isDemo ? MOCK_PRODUCTS : products;
+  const effectiveSales = isDemo ? MOCK_SALES : sales;
+
+  // Calcular previsões de estoque com dados reais
+  const forecasts = calculateStockForecasts(effectiveProducts, effectiveSales);
+
+  // Contexto completo do negócio para injetar no prompt
   const storeContext = {
-    products: MOCK_PRODUCTS.map((p) => ({
+    products: effectiveProducts.map((p) => ({
       name: p.name,
       category: p.category,
       stock: p.stock,
@@ -124,11 +135,13 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
       price: p.price,
       status: p.status,
     })),
-    lowStockProducts: MOCK_PRODUCTS.filter((p) => p.stock < p.minStock).map((p) => p.name),
-    totalProducts: MOCK_PRODUCTS.length,
-    totalStockValue: MOCK_PRODUCTS.reduce((s, p) => s + p.stock * p.price, 0).toFixed(2),
+    lowStockProducts: effectiveProducts.filter((p) => p.stock <= p.minStock).map((p) => p.name),
+    totalProducts: effectiveProducts.length,
+    totalStockValue: effectiveProducts.reduce((s, p) => s + p.stock * p.price, 0).toFixed(2),
+    recentSalesCount: effectiveSales.length,
+    stockForecasts: forecastsToContext(forecasts),
     currentDate: new Date().toLocaleDateString("pt-BR"),
-    businessName: "Prateleira",
+    isDemo,
   };
 
   // Scroll automático
@@ -136,12 +149,17 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Foco no input ao abrir
+  // Foco e envio de initialQuestion ao abrir
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 300);
+      if (initialQuestion) {
+        setMessages([WELCOME_MESSAGE]);
+        setTimeout(() => sendMessage(initialQuestion), 500);
+      }
     }
-  }, [isOpen]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialQuestion]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -218,7 +236,7 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
             transition={{ type: "spring", damping: 28, stiffness: 350 }}
             className={cn(
               "fixed right-4 bottom-20 z-50",
-              "w-[360px] h-[560px] max-h-[calc(100vh-6rem)]",
+              "w-[360px] h-[580px] max-h-[calc(100vh-6rem)]",
               "bg-gray-50 rounded-2xl shadow-2xl border border-border",
               "flex flex-col overflow-hidden"
             )}
@@ -231,7 +249,7 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm leading-none">Prateleira IA</p>
                 <p className="text-[11px] text-violet-200 mt-0.5">
-                  {AI_READY ? "● Conectada ao Gemini" : "● Modo offline"}
+                  {AI_READY ? "● Conectada ao Gemini" : "● Análise local"}
                 </p>
               </div>
               <button
@@ -256,10 +274,8 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                 <MessageBubble key={i} msg={msg} />
               ))}
 
-              {/* Typing indicator */}
               {isLoading && <TypingIndicator />}
 
-              {/* Quick suggestions */}
               {showSuggestions && !isLoading && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -288,7 +304,7 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
               <div ref={endRef} />
             </div>
 
-            {/* Input area */}
+            {/* Input */}
             <div className="px-4 py-3 bg-white border-t border-border flex-shrink-0">
               <div className="flex items-center gap-2 bg-gray-50 border border-border rounded-xl px-3 py-2 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 transition-all">
                 <input
@@ -311,7 +327,7 @@ export function AIChatPanel({ isOpen, onClose }: AIChatPanelProps) {
                 </button>
               </div>
               <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                Powered by Google Gemini
+                Dados reais do seu estoque • Powered by Google Gemini
               </p>
             </div>
           </motion.div>
