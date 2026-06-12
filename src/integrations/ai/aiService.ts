@@ -57,30 +57,85 @@ export async function sendMessageToAssistant(
     return generateSmartFallback(messages, storeContext);
   }
 
+  const systemPrompt = buildSystemPrompt(storeContext);
+  const lastMessage = messages[messages.length - 1];
+
+  // Tentar via SDK primeiro
   try {
     const model = getGenAI().getGenerativeModel({
       model: "gemini-2.0-flash",
-      systemInstruction: buildSystemPrompt(storeContext),
+      systemInstruction: systemPrompt,
     });
 
-    // Converter histórico para formato do Gemini
     const history = messages.slice(0, -1).map((msg) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{ text: msg.content }],
     }));
 
     const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1];
     const result = await chat.sendMessage(lastMessage.content);
     return result.response.text();
-  } catch (error: unknown) {
-    console.error("[AI Service] Erro ao chamar Gemini:", error);
-    const errMsg = error instanceof Error ? error.message : String(error);
-    if (errMsg.includes("API_KEY") || errMsg.includes("403")) {
-      return "❌ Chave de API inválida. Verifique o valor de `VITE_GEMINI_API_KEY` no `.env.local`.";
+  } catch (sdkError: unknown) {
+    console.warn("[AI] SDK falhou, tentando REST API:", sdkError);
+
+    // Fallback: chamar a REST API do Gemini diretamente (funciona com chaves AQ.)
+    try {
+      return await callGeminiREST(systemPrompt, messages);
+    } catch (restError: unknown) {
+      console.error("[AI] REST API também falhou:", restError);
+      const errMsg = restError instanceof Error ? restError.message : String(restError);
+
+      if (errMsg.includes("401") || errMsg.includes("403") || errMsg.includes("API_KEY")) {
+        return "❌ Chave de API inválida ou sem permissão. Verifique o valor de `VITE_GEMINI_API_KEY` no `.env.local` e reinicie o servidor.";
+      }
+      if (errMsg.includes("429")) {
+        return "⏳ Limite de requisições atingido. Aguarde um momento e tente novamente.";
+      }
+      // Fallback inteligente local
+      return generateSmartFallback(messages, storeContext);
     }
-    return "⚠️ Não consegui conectar ao assistente agora. Tente novamente em alguns instantes.";
   }
+}
+
+// ─── Chamada REST direta ao Gemini (suporta chaves AQ.) ───────
+async function callGeminiREST(
+  systemPrompt: string,
+  messages: AIMessage[]
+): Promise<string> {
+  const model = "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const contents = messages.map((msg) => ({
+    role: msg.role === "user" ? "user" : "model",
+    parts: [{ text: msg.content }],
+  }));
+
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    generationConfig: {
+      maxOutputTokens: 1024,
+      temperature: 0.7,
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": GEMINI_API_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ??
+    "Não recebi uma resposta válida do assistente.";
 }
 
 // ─── Fallback inteligente baseado nos dados locais ───────────
